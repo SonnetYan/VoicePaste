@@ -5,6 +5,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         coordinator = AppCoordinator()
-        print("[VoicePaste] App launched. Press Option+Space to record.")
+        print("[VoicePaste] App launched. Hold Right Option key to record.")
     }
 }

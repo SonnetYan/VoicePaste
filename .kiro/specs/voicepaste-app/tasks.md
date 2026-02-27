@@ -54,10 +54,10 @@
   - [x] `/tmp/voicepaste_recording.wav` 生成且大小 > 0
   - [x] `afplay` 播放录音内容正确
 
-- [ ] 4. 配置管理与 Whisper 语音转文字 (Phase 2)
-  - [ ] 4.1 实现 ConfigManager
+- [x] 4. 配置管理与 Whisper 语音转文字 (Phase 2)
+  - [x] 4.1 实现 ConfigManager ✅
     - 创建 `Sources/ConfigManager.swift`
-    - 实现 `AppConfig` Codable 结构体（openaiApiKey, llmProvider, llmApiKey, llmModel, llmBaseURL, hotkeyModifiers, hotkeyKeyCode, launchAtLogin）
+    - 实现 `AppConfig` Codable 结构体（openaiApiKey 改为可选, llmProvider, llmApiKey, llmModel, llmBaseURL, hotkeyModifiers, hotkeyKeyCode, launchAtLogin）
     - 实现 `load() throws -> AppConfig` 和 `save(_ config: AppConfig) throws`
     - 配置文件路径：`~/.config/voicepaste/config.json`
     - 使用 snake_case JSON 编码策略
@@ -68,38 +68,44 @@
     - **Validates: Requirements 4.1, 4.2, 4.5**
     - **Property 2: 无效配置文件错误处理**
     - **Validates: Requirements 4.3**
-  - [ ] 4.3 实现 WhisperService
+  - [x] 4.3 实现 WhisperService ✅ **重大变更：改用本地 whisper.cpp**
     - 创建 `Sources/WhisperService.swift`
-    - 使用 `URLSession` 构建 multipart/form-data POST 请求
-    - endpoint: `https://api.openai.com/v1/audio/transcriptions`
-    - 请求体：file (WAV 数据) + model ("whisper-1")
-    - 解析 JSON 响应提取 `text` 字段
-    - 设置 30 秒超时
-    - 从 ConfigManager 获取 API key
-    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+    - ~~使用 `URLSession` 构建 multipart/form-data POST 请求~~ → 改为调用本地 `whisper-cli` 命令行工具
+    - ~~endpoint: `https://api.openai.com/v1/audio/transcriptions`~~ → 本地执行，无需网络
+    - ~~请求体：file (WAV 数据) + model ("whisper-1")~~ → 优先使用 `ggml-base.bin` 模型（141MB，速度快）
+    - ~~解析 JSON 响应提取 `text` 字段~~ → 直接读取 stdout 输出
+    - ~~设置 30 秒超时~~ → 本地执行
+    - ~~从 ConfigManager 获取 API key~~ → 不需要 API key
+    - 通过 `Process` 调用 `/opt/homebrew/bin/whisper-cli`
+    - 模型路径：`~/.local/share/whisper-cpp/models/`（按 small > base > large 优先级选择）
+    - 使用 `-l auto` 自动语言检测，`-t 8` 多线程，`-bs 1` greedy decoding 加速
+    - _Requirements: 3.1, 3.2, 3.4, 3.5_
   - [ ]* 4.4 编写 WhisperService 属性测试
-    - **Property 4: Whisper API 响应解析正确性**
+    - **Property 4: Whisper 输出解析正确性**（已调整为本地模式）
     - **Validates: Requirements 3.2**
-    - **Property 5: Whisper API 错误响应处理**
+    - **Property 5: Whisper 错误处理**（已调整为本地模式）
     - **Validates: Requirements 3.4**
-  - [ ] 4.5 将 WhisperService 集成到 AppCoordinator 流水线
+  - [x] 4.5 将 WhisperService 集成到 AppCoordinator 流水线 ✅
     - 录音结束后调用 `WhisperService.transcribe(audioURL:)`
-    - 将转写结果打印到控制台
+    - 将转写结果打印到控制台（含耗时统计）
     - 处理转写错误
+    - 修复了 pipeline 完成后状态未恢复 idle 导致无法二次录音的 bug
     - _Requirements: 3.1, 3.2_
 
-- [ ] 5. Checkpoint - Phase 2 验证
-  - 确保创建 `~/.config/voicepaste/config.json` 后能正确读取 API key
-  - 确保录音后控制台输出转写文本
-  - 确保断网时应用不崩溃，控制台显示错误信息
-  - 如有问题请告知用户
+- [x] 5. Checkpoint - Phase 2 验证 ✅
+  - [x] `swift build` 编译通过
+  - [x] 录音后控制台输出转写文本（本地 Whisper，无需 API key）
+  - [x] 可连续多次录音和转写
+  - [x] 中文语音正确转写
+  - [x] 英文语音正确转写
 
-- [ ] 6. LLM 文本润色 (Phase 3)
-  - [ ] 6.1 实现 LLMService
+- [x] 6. LLM 文本润色 (Phase 3)
+  - [x] 6.1 实现 LLMService ✅
     - 创建 `Sources/LLMService.swift`
-    - 实现 OpenAI Chat Completions 兼容的请求构建（支持 DeepSeek、OpenAI 等）
+    - 实现 OpenAI Chat Completions 兼容的请求构建（支持智谱 GLM、DeepSeek、OpenAI）
     - 根据 `llm_provider` 配置选择 base URL 和默认模型
-    - 内置润色 system prompt
+    - 智谱默认：`https://open.bigmodel.cn/api/paas/v4/chat/completions`，模型 `glm-4-flash`
+    - 内置润色 system prompt（保持原文语言、去除填充词、修正语法、保持原意）
     - 解析 `choices[0].message.content` 响应
     - 设置 30 秒超时
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
@@ -110,16 +116,16 @@
     - **Validates: Requirements 5.5**
     - **Property 8: LLM 提供商配置切换**
     - **Validates: Requirements 5.7**
-  - [ ] 6.3 将 LLMService 集成到 AppCoordinator 流水线
+  - [x] 6.3 将 LLMService 集成到 AppCoordinator 流水线 ✅
     - 转写完成后调用 `LLMService.polish(text:)`
-    - 将原始转写和润色结果都打印到控制台
+    - 将原始转写和润色结果都打印到控制台（含耗时统计）
     - 处理润色错误
     - _Requirements: 5.1, 5.3_
 
-- [ ] 7. Checkpoint - Phase 3 验证
-  - 确保控制台能看到 Whisper 原始结果和 LLM 润色结果的对比
-  - 确保润色结果去除了口语填充词
-  - 如有问题请告知用户
+- [x] 7. Checkpoint - Phase 3 验证 ✅
+  - [x] 控制台能看到 Whisper 原始结果和 LLM 润色结果的对比
+  - [x] 润色结果去除了口语填充词
+  - [x] 每步耗时统计正常显示
 
 - [ ] 8. 剪贴板与自动粘贴 (Phase 4)
   - [ ] 8.1 实现 ClipboardManager
@@ -157,8 +163,7 @@
   - [ ] 10.2 实现 SettingsView
     - 创建 `Sources/SettingsView.swift`
     - 使用 SwiftUI Form 布局
-    - OpenAI API key 输入（SecureField）
-    - LLM 提供商选择和 API key 输入
+    - LLM 提供商选择和 API key 输入（SecureField）
     - 快捷键自定义
     - 开机自启动开关（使用 SMAppService）
     - 保存时调用 ConfigManager.save()

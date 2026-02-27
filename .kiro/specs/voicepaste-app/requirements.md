@@ -2,14 +2,14 @@
 
 ## 简介
 
-VoicePaste 是一个 macOS menu bar 应用，用户按住全局快捷键录音，松开后通过 AI 将语音转为润色后的文字，自动写入剪贴板并粘贴到当前光标位置。目标用户为开发者自用，技术栈为 Swift + SwiftUI，使用 OpenAI Whisper API 进行语音转文字，使用可配置的 LLM API（如 DeepSeek、OpenAI、Anthropic 等）进行文本润色。项目使用 Swift Package Manager (SPM) 构建，不使用 Xcode 项目文件。
+VoicePaste 是一个 macOS menu bar 应用，用户按住右 Option 键录音，松开后通过 AI 将语音转为润色后的文字，自动写入剪贴板并粘贴到当前光标位置。目标用户为开发者自用，技术栈为 Swift + SwiftUI，使用本地 whisper.cpp 进行语音转文字（离线，无需 API key），使用可配置的 LLM API（如智谱 GLM、DeepSeek、OpenAI 等）进行文本润色。项目使用 Swift Package Manager (SPM) 构建，不使用 Xcode 项目文件。
 
 ## 术语表
 
 - **VoicePaste_App**: macOS menu bar 应用主体，负责协调录音、转写、润色、粘贴的完整流程
 - **Audio_Recorder**: 音频录制组件，使用 AVAudioEngine 进行麦克风录音
-- **Whisper_Service**: 语音转文字服务，调用 OpenAI Whisper API 将音频转为文字
-- **LLM_Service**: 文本润色服务，调用可配置的 LLM API（如 DeepSeek、OpenAI、Anthropic 等）对转写文字进行润色
+- **Whisper_Service**: 语音转文字服务，调用本地 whisper.cpp（whisper-cli）将音频转为文字，完全离线运行
+- **LLM_Service**: 文本润色服务，调用可配置的 LLM API（如智谱 GLM、DeepSeek、OpenAI 等）对转写文字进行润色
 - **Clipboard_Manager**: 剪贴板管理组件，负责将文字写入系统剪贴板并模拟粘贴
 - **Hotkey_Manager**: 全局快捷键管理组件，负责注册和监听全局快捷键
 - **Config_Manager**: 配置管理组件，负责读写 `~/.config/voicepaste/config.json` 配置文件
@@ -50,10 +50,10 @@ VoicePaste 是一个 macOS menu bar 应用，用户按住全局快捷键录音�
 
 #### 验收标准
 
-1. WHEN 录音完成, THE Whisper_Service SHALL 读取 WAV 音频文件并调用 OpenAI Whisper API (`POST https://api.openai.com/v1/audio/transcriptions`，model: `whisper-1`) 进行转写
-2. WHEN Whisper API 返回成功响应, THE Whisper_Service SHALL 提取转写文本并传递给下游处理流程
-3. THE Whisper_Service SHALL 从 Config_Manager 获取 OpenAI API key，不在代码中硬编码任何 API key
-4. WHEN Whisper_Service 的网络请求超时或失败, THE Whisper_Service SHALL 返回描述性错误信息而不导致应用崩溃
+1. WHEN 录音完成, THE Whisper_Service SHALL 读取 WAV 音频文件并调用本地 whisper.cpp（whisper-cli）进行转写，优先使用 ggml-base 模型
+2. WHEN whisper-cli 返回成功输出, THE Whisper_Service SHALL 提取转写文本并传递给下游处理流程
+3. THE Whisper_Service SHALL 使用本地模型，不需要 API key，完全离线运行
+4. WHEN Whisper_Service 执行失败（whisper-cli 不存在、模型文件缺失、进程异常退出）, THE Whisper_Service SHALL 返回描述性错误信息而不导致应用崩溃
 5. THE Whisper_Service SHALL 正确转写中文和英文语音内容
 
 ### 需求 4：配置文件管理
@@ -63,7 +63,7 @@ VoicePaste 是一个 macOS menu bar 应用，用户按住全局快捷键录音�
 #### 验收标准
 
 1. THE Config_Manager SHALL 从 `~/.config/voicepaste/config.json` 读取配置信息
-2. THE Config_Manager SHALL 支持读取以下配置字段：`openai_api_key`、`llm_provider`（润色服务提供商名称）和 `llm_api_key`（润色服务 API key）
+2. THE Config_Manager SHALL 支持读取以下配置字段：`llm_provider`（润色服务提供商名称）和 `llm_api_key`（润色服务 API key），`openai_api_key` 为可选字段（本地 Whisper 不需要）
 3. IF 配置文件不存在或格式无效, THEN THE Config_Manager SHALL 返回明确的错误提示信息
 4. WHEN 用户通过 Settings_View 修改配置, THE Config_Manager SHALL 将更新后的配置写入配置文件
 5. THE Config_Manager SHALL 对配置文件中的 JSON 内容进行序列化和反序列化处理
@@ -113,7 +113,7 @@ VoicePaste 是一个 macOS menu bar 应用，用户按住全局快捷键录音�
 #### 验收标准
 
 1. WHEN 用户点击下拉菜单中的"设置", THE Settings_View SHALL 显示设置窗口
-2. THE Settings_View SHALL 提供 OpenAI API key 和 LLM 润色服务 API key 的输入字段，以及 LLM 提供商选择
+2. THE Settings_View SHALL 提供 LLM 润色服务 API key 的输入字段，以及 LLM 提供商选择
 3. WHEN 用户在 Settings_View 中保存 API key, THE Config_Manager SHALL 将新的 API key 持久化到配置文件，后续 API 调用使用新 key
 4. THE Settings_View SHALL 提供快捷键自定义功能
 5. THE Settings_View SHALL 提供开机自启动开关

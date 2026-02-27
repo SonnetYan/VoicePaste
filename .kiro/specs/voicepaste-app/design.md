@@ -39,12 +39,12 @@ sequenceDiagram
     participant LLMService
     participant ClipboardManager
 
-    User->>HotkeyManager: 按下 Option+Space
+    User->>HotkeyManager: 按下右 Option 键
     HotkeyManager->>AppCoordinator: keyDown 事件
     AppCoordinator->>AudioRecorder: startRecording()
     AppCoordinator->>StatusBarController: setState(.recording) 红色
     
-    User->>HotkeyManager: 松开 Option+Space
+    User->>HotkeyManager: 松开右 Option 键
     HotkeyManager->>AppCoordinator: keyUp 事件
     AppCoordinator->>AudioRecorder: stopRecording() → WAV URL
     AppCoordinator->>StatusBarController: setState(.processing) 橙色
@@ -132,7 +132,7 @@ class AudioRecorder {
 ```swift
 class WhisperService {
     private let whisperCLI = "/opt/homebrew/bin/whisper-cli"
-    private let modelPath: String  // ~/.local/share/whisper-cpp/models/ggml-large-v3-turbo.bin
+    private let modelPath: String  // 优先 ggml-small > ggml-base > ggml-large-v3-turbo
     
     func transcribe(audioURL: URL) async throws -> String
 }
@@ -140,8 +140,8 @@ class WhisperService {
 
 实现要点：
 - 通过 `Process` 调用本地 `/opt/homebrew/bin/whisper-cli` 命令行工具
-- 使用 `ggml-large-v3-turbo.bin` 模型（~1.5GB，支持中英混说）
-- 模型路径：`~/.local/share/whisper-cpp/models/ggml-large-v3-turbo.bin`
+- 使用 `ggml-base.bin` 模型（141MB，速度快），也支持 small 和 large-v3-turbo
+- 模型路径：`~/.local/share/whisper-cpp/models/`（按 small > base > large 优先级选择）
 - 参数：`-m <model> -l auto -f <audio> --no-timestamps --no-prints`
 - 使用 `-l auto` 自动语言检测
 - 已知局限：中英混说时以开头语言为主，交由 LLM 润色修正
@@ -297,14 +297,9 @@ class NotificationManager {
 
 ```json
 {
-  "openai_api_key": "sk-...(可选，本地 Whisper 不需要)",
-  "llm_provider": "deepseek",
-  "llm_api_key": "sk-...",
-  "llm_model": "deepseek-chat",
-  "llm_base_url": "https://api.deepseek.com/v1/chat/completions",
-  "hotkey_modifiers": 524288,
-  "hotkey_key_code": 49,
-  "launch_at_login": false
+  "llm_provider": "zhipu",
+  "llm_api_key": "your-api-key-here",
+  "llm_model": "glm-4-flash"
 }
 ```
 
@@ -319,7 +314,7 @@ class NotificationManager {
 ### Whisper 本地调用
 
 ```
-/opt/homebrew/bin/whisper-cli -m ~/.local/share/whisper-cpp/models/ggml-large-v3-turbo.bin -l auto -f <audio.wav> --no-timestamps --no-prints
+/opt/homebrew/bin/whisper-cli -m ~/.local/share/whisper-cpp/models/ggml-base.bin -l auto -t 8 -bs 1 -nf -f <audio.wav> --no-timestamps --no-prints
 ```
 
 输出：纯文本转写结果（stdout）
@@ -359,7 +354,7 @@ VoicePaste/
 │   ├── main.swift                    # App entry point
 │   ├── AppCoordinator.swift          # 流水线协调
 │   ├── AudioRecorder.swift           # AVAudioEngine 录音
-│   ├── WhisperService.swift          # OpenAI Whisper API
+│   ├── WhisperService.swift          # 本地 whisper.cpp 转写
 │   ├── LLMService.swift              # 可配置 LLM API
 │   ├── ClipboardManager.swift        # 剪贴板 + 模拟粘贴
 │   ├── HotkeyManager.swift           # 全局快捷键
@@ -414,15 +409,15 @@ let package = Package(
 
 **Validates: Requirements 2.4, 2.5, 6.4, 6.5, 10.2**
 
-### Property 4: Whisper API 响应解析正确性
+### Property 4: Whisper 输出解析正确性
 
-*For any* 包含 `text` 字段的有效 JSON 响应，WhisperService 应正确提取并返回该文本字符串。
+*For any* whisper-cli 成功执行后的 stdout 输出，WhisperService 应正确提取并返回转写文本字符串。
 
 **Validates: Requirements 3.2**
 
-### Property 5: Whisper API 错误响应处理
+### Property 5: Whisper 错误处理
 
-*For any* 异常的 HTTP 响应（超时、4xx、5xx 状态码、格式错误的 JSON），WhisperService 应返回描述性错误而非崩溃。
+*For any* 异常情况（whisper-cli 不存在、模型缺失、进程非零退出、空输出），WhisperService 应返回描述性错误而非崩溃。
 
 **Validates: Requirements 3.4**
 
